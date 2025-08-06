@@ -64,6 +64,7 @@ class ConfigManager:
 class IPFilter:
     def __init__(self, config: Dict):
         self.ignored_ips = self._parse_ip_list(config.get('IGNORED_IPS', []))
+        self.whitelisted_ips = self._parse_ip_list(config.get('WHITELISTED_IPS', []))
     
     def _parse_ip_list(self, ip_list: List[str]) -> List[Union[ipaddress.IPv4Network, ipaddress.IPv4Address]]:
         """
@@ -90,25 +91,34 @@ class IPFilter:
     
     def is_ip_allowed(self, ip: str) -> bool:
         """
-        Comprehensive IP filtering with precise exclusion
-        
+        Comprehensive IP filtering with support for whitelists and exclusions
+
         Args:
             ip (str): IP address to check
-        
+
         Returns:
             bool: True if IP should be processed, False if it should be ignored
         """
         try:
             ip_obj = ipaddress.ip_address(ip)
-            
-            # Check if IP matches any ignored IP or network
+
+            # If a whitelist is defined, only allow IPs within it
+            if self.whitelisted_ips:
+                in_whitelist = any(
+                    (isinstance(allowed_ip, ipaddress.IPv4Network) and ip_obj in allowed_ip) or
+                    (isinstance(allowed_ip, ipaddress.IPv4Address) and ip_obj == allowed_ip)
+                    for allowed_ip in self.whitelisted_ips
+                )
+                if not in_whitelist:
+                    return False
+
+            # Exclude any IPs explicitly ignored
             return not any(
-                # Handle both IPv4Network and IPv4Address checks
-                (isinstance(ignored_ip, ipaddress.IPv4Network) and ip_obj in ignored_ip) or 
+                (isinstance(ignored_ip, ipaddress.IPv4Network) and ip_obj in ignored_ip) or
                 (isinstance(ignored_ip, ipaddress.IPv4Address) and ip_obj == ignored_ip)
                 for ignored_ip in self.ignored_ips
             )
-        
+
         except ValueError:
             logger.error(f"Invalid IP address: {ip}")
             return False
